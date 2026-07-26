@@ -153,14 +153,34 @@
   .attr-card input.val{
     width:100%; text-align:center; font-family:var(--font-mono); font-weight:700;
     font-size:20px; border:1px solid var(--gold); border-radius:5px; background:#fbf5e6;
-    padding:3px 0; margin-bottom:4px; color:var(--sumi);
+    padding:3px 0; color:var(--sumi);
   }
-  .attr-card .mod-row{ font-size:8px; color:var(--sumi-soft); }
+  .attr-card .mod-row{ font-size:8px; color:var(--sumi-soft); margin-top:4px; }
   .attr-card input.mod{
     width:100%; text-align:center; font-family:var(--font-mono); font-weight:600;
     font-size:13px; border:1px solid var(--gold-light); border-radius:5px; background:#fbf5e6;
     padding:2px 0; color:var(--shu-dark);
   }
+  .stepper{ display:flex; align-items:stretch; gap:3px; }
+  .stepper input{ flex:1; min-width:0; }
+  .step-btn{
+    flex:0 0 auto;
+    width:20px;
+    border:1px solid var(--gold);
+    background:var(--gold-light);
+    color:var(--sumi);
+    font-family:var(--font-mono);
+    font-weight:700;
+    font-size:13px;
+    border-radius:4px;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    padding:0;
+    -webkit-user-select:none; user-select:none;
+    touch-action:manipulation;
+  }
+  .step-btn:active{ background:var(--gold); transform:translateY(1px); }
+  .stepper.small .step-btn{ width:17px; font-size:11px; }
 
   /* Combat */
   .combat{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
@@ -172,9 +192,10 @@
   .stat-card .label{ font-size:8.5px; color:var(--sumi-soft); text-transform:uppercase; letter-spacing:.5px;}
   .stat-card input{
     width:100%; text-align:center; font-family:var(--font-mono); font-weight:700; font-size:19px;
-    border:1px solid var(--gold-light); border-radius:5px; background:#fbf5e6; margin-top:5px; padding:3px 0;
+    border:1px solid var(--gold-light); border-radius:5px; background:#fbf5e6; padding:3px 0;
     color:var(--indigo);
   }
+  .stat-card .stepper{ margin-top:5px; }
 
   /* two column */
   .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
@@ -416,6 +437,22 @@ async function saveState(manual){
   }
 }
 
+/* ---------- number stepper helper ---------- */
+function stepValue(str, delta, forceSign){
+  str = (str || '').trim();
+  const m = str.match(/^([+-]?)(\d+)(.*)$/);
+  let num, suffix;
+  if(m){
+    num = parseInt(m[1] + m[2], 10) + delta;
+    suffix = m[3] || '';
+  } else {
+    num = delta;
+    suffix = str.replace(/[0-9+-]/g,'');
+  }
+  const numStr = forceSign ? (num >= 0 ? '+' + num : String(num)) : String(num);
+  return numStr + suffix;
+}
+
 /* ---------- render ---------- */
 function renderAll(){
   document.getElementById('charName').value = state.name;
@@ -456,9 +493,17 @@ function renderAttrs(){
     card.innerHTML = `
       <div class="abbr">${a.abbr}</div>
       <div class="name">${a.name}</div>
-      <input class="val" value="${a.val}" data-i="${i}" data-f="val">
+      <div class="stepper">
+        <button type="button" class="step-btn" data-i="${i}" data-f="val" data-d="-1">−</button>
+        <input class="val" value="${a.val}" data-i="${i}" data-f="val">
+        <button type="button" class="step-btn" data-i="${i}" data-f="val" data-d="1">+</button>
+      </div>
       <div class="mod-row">mod.</div>
-      <input class="mod" value="${a.mod}" data-i="${i}" data-f="mod">
+      <div class="stepper small">
+        <button type="button" class="step-btn" data-i="${i}" data-f="mod" data-d="-1">−</button>
+        <input class="mod" value="${a.mod}" data-i="${i}" data-f="mod">
+        <button type="button" class="step-btn" data-i="${i}" data-f="mod" data-d="1">+</button>
+      </div>
     `;
     grid.appendChild(card);
   });
@@ -469,20 +514,46 @@ function renderAttrs(){
       scheduleSave();
     });
   });
+  grid.querySelectorAll('.step-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.dataset.i, f = e.target.dataset.f, d = +e.target.dataset.d;
+      const forceSign = (f === 'mod');
+      state.attrs[i][f] = stepValue(state.attrs[i][f], d, forceSign);
+      renderAttrs();
+      scheduleSave();
+    });
+  });
 }
 
 function renderCombat(){
   const grid = document.getElementById('combatGrid');
   grid.innerHTML = '';
   state.combat.forEach((s, i)=>{
+    const forceSign = /prof/i.test(s.label);
     const card = document.createElement('div');
     card.className = 'stat-card';
-    card.innerHTML = `<div class="label">${s.label}</div><input value="${s.val}" data-i="${i}">`;
+    card.innerHTML = `
+      <div class="label">${s.label}</div>
+      <div class="stepper">
+        <button type="button" class="step-btn" data-i="${i}" data-d="-1">−</button>
+        <input value="${s.val}" data-i="${i}">
+        <button type="button" class="step-btn" data-i="${i}" data-d="1">+</button>
+      </div>
+    `;
     grid.appendChild(card);
   });
   grid.querySelectorAll('input').forEach(inp=>{
     inp.addEventListener('input', e=>{
       state.combat[+e.target.dataset.i].val = e.target.value;
+      scheduleSave();
+    });
+  });
+  grid.querySelectorAll('.step-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.dataset.i, d = +e.target.dataset.d;
+      const forceSign = /prof/i.test(state.combat[i].label);
+      state.combat[i].val = stepValue(state.combat[i].val, d, forceSign);
+      renderCombat();
       scheduleSave();
     });
   });
